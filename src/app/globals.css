@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+/*
+ * Tema de OmniMarket. Tailwind v4 se configura en CSS con @theme.
+ * Los tokens semánticos generan utilidades como bg-surface, text-muted o border-line.
+ * Los pares de color de texto y fondo cumplen contraste AA (≥ 4.5:1).
+ */
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  /* Superficies y texto */
+  --color-canvas: #f6f7f9; /* fondo de la app */
+  --color-surface: #ffffff; /* tarjetas, tablas, diálogos */
+  --color-subtle: #eef0f3; /* zonas secundarias, cabeceras de tabla */
+  --color-line: #dde1e6; /* bordes */
+  --color-ink: #111827; /* texto principal */
+  --color-muted: #4b5563; /* texto secundario (7.0:1 sobre blanco) */
+
+  /* Marca y estados */
+  --color-brand: #4338ca; /* indigo-700 (7.4:1 sobre blanco) */
+  --color-brand-hover: #3730a3;
+  --color-brand-soft: #eef2ff;
+  --color-danger: #b91c1c;
+  --color-danger-hover: #991b1b;
+  --color-danger-soft: #fef2f2;
+  --color-success: #15803d;
+  --color-success-soft: #f0fdf4;
+  --color-warning: #a16207;
+  --color-warning-soft: #fefce8;
+
+  /* Fondo de los skeletons */
+  --color-skeleton: #e3e6ea;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    @apply bg-canvas font-sans text-ink antialiased;
+  }
+
+  /* Foco visible y consistente en todos los elementos interactivos. */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-brand;
+  }
+
+  /* Respeta a quienes desactivan las animaciones (incluye el pulso de los skeletons). */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  dialog::backdrop {
+    background: rgb(17 24 39 / 0.45);
+  }
+}
