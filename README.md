@@ -238,7 +238,7 @@ npx supabase status                      # URL, claves y DB_URL del stack local
 | `deploy`       | `vercel build` y `vercel deploy --prebuilt --prod`                      |
 | `smoke`        | Verifica los 3 endpoints de auditoría en la URL de producción           |
 
-Los tres últimos solo corren en push a `main`, si `quality`, `unit` y `e2e` pasan y si la variable `DEPLOY_ENABLED` vale `true`.
+Los tres últimos solo corren en `main`, con un push o con _Run workflow_. Además necesitan que `quality`, `unit` y `e2e` pasen y que la variable `DEPLOY_ENABLED` valga `true`. Nunca corren en pull requests.
 
 `vercel.json` desactiva los despliegues automáticos de Vercel desde Git. Así **la única vía a producción es el pipeline**, y un test en rojo bloquea el despliegue. La región de las funciones (`pdx1`, Oregón) es la misma que la del proyecto de Supabase (`us-west-2`), para cumplir el SLA de 300 ms.
 

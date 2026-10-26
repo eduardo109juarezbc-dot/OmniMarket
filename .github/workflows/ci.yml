@@ -4,7 +4,8 @@
 #            ├─► e2e ─► migrate-prod ─► deploy ─► smoke
 #   unit ────┘
 #
-# Los 3 últimos solo corren en push a main y con la variable DEPLOY_ENABLED=true.
+# Los 3 últimos solo corren en main (push o "Run workflow") y con la variable
+# DEPLOY_ENABLED=true; nunca en pull requests.
 #
 # vercel.json desactiva los despliegues automáticos desde Git: la única vía a
 # producción es el job `deploy`, que depende de que pasen todas las pruebas.
@@ -103,9 +104,13 @@ jobs:
   migrate-prod:
     name: Migraciones de producción
     needs: e2e
+    # Solo en main (push o lanzamiento manual "Run workflow"), nunca en pull requests.
     # DEPLOY_ENABLED (variable del repositorio) se activa cuando los secretos de
     # Vercel y Supabase ya están configurados; hasta entonces solo corren las pruebas.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      && github.ref == 'refs/heads/main'
+      && vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
