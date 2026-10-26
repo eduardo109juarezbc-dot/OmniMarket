@@ -253,14 +253,19 @@ Los tres últimos solo corren en `main`, con un push o con _Run workflow_. Adem�
    - los ids están en _Project Settings_ (`Project ID`) y en _Team/Account Settings_ (`Team ID`), o en `.vercel/project.json` tras ejecutar `npx vercel link`.
 2. **GitHub → Settings → Secrets and variables → Actions:**
 
-   | Tipo     | Nombre                     | Valor                                                          |
-   | -------- | -------------------------- | -------------------------------------------------------------- |
-   | Secret   | `VERCEL_TOKEN`             | Token de Vercel                                                |
-   | Secret   | `VERCEL_ORG_ID`            | Team ID (u Org ID) de Vercel                                   |
-   | Secret   | `VERCEL_PROJECT_ID`        | Project ID de Vercel                                           |
-   | Secret   | `PROD_DATABASE_URL_DIRECT` | Cadena del _Session pooler_ (puerto 5432) de producción        |
-   | Secret   | `PROD_URL`                 | URL pública, p. ej. `https://<app>.vercel.app` (sin `/` final) |
-   | Variable | `DEPLOY_ENABLED`           | `true` cuando lo anterior esté listo                           |
+   | Tipo     | Nombre                                 | Valor                                                          |
+   | -------- | -------------------------------------- | -------------------------------------------------------------- |
+   | Secret   | `VERCEL_TOKEN`                         | Token de Vercel                                                |
+   | Secret   | `VERCEL_ORG_ID`                        | Team ID (u Org ID) de Vercel                                   |
+   | Secret   | `VERCEL_PROJECT_ID`                    | Project ID de Vercel                                           |
+   | Secret   | `PROD_DATABASE_URL_DIRECT`             | Cadena del _Session pooler_ (puerto 5432) de producción        |
+   | Secret   | `PROD_URL`                             | URL pública, p. ej. `https://<app>.vercel.app` (sin `/` final) |
+   | Secret   | `NEXT_PUBLIC_SUPABASE_URL`             | URL del proyecto de Supabase (se incrusta en el build)         |
+   | Secret   | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Publishable key de Supabase (se incrusta en el build)          |
+   | Secret   | `PROD_TEST_API_TOKEN`                  | El mismo valor que `TEST_API_TOKEN` en Vercel                  |
+   | Variable | `DEPLOY_ENABLED`                       | `true` cuando lo anterior esté listo                           |
+
+   El pipeline compila en GitHub y sube el resultado con `vercel deploy --prebuilt`. `vercel pull` no entrega el valor real de las variables marcadas como _Sensitive_ en Vercel. Por eso las que necesita el build se leen de GitHub, y el despliegue se detiene si faltan o tienen un formato incorrecto.
 
 3. **Protección de rama:** en _Settings → Branches_, marca `quality`, `unit` y `e2e` como checks obligatorios en `main`.
 4. **Supabase y proveedores OAuth:**
