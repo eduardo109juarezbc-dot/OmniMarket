@@ -159,8 +159,9 @@ jobs:
       # si no existen, de lo descargado; y si siguen vacías, el despliegue se detiene.
       - name: Variables públicas del build
         env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          # Se aceptan como Variable o como Secret del repositorio.
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
           NEXT_PUBLIC_SITE_URL: ${{ secrets.PROD_URL }}
           NEXT_PUBLIC_CURRENCY: ${{ vars.NEXT_PUBLIC_CURRENCY || 'USD' }}
           NEXT_PUBLIC_LOCALE: ${{ vars.NEXT_PUBLIC_LOCALE || 'es-ES' }}
@@ -170,9 +171,13 @@ jobs:
           touch "$file"
           for key in NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY NEXT_PUBLIC_SITE_URL NEXT_PUBLIC_CURRENCY NEXT_PUBLIC_LOCALE NEXT_PUBLIC_TIME_ZONE; do
             value="${!key}"
+            source="GitHub"
             if [ -z "$value" ]; then
               value=$(grep -E "^${key}=" "$file" | head -n1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//')
+              source="vercel pull"
             fi
+            # Quita espacios y saltos de línea pegados por error al copiar el valor.
+            value=$(printf '%s' "$value" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
             if [ -z "$value" ]; then
               echo "::error::$key está vacía. Créala en GitHub (Settings → Secrets and variables → Actions → Variables) o quítale 'Sensitive' en Vercel."
               exit 1
@@ -180,10 +185,38 @@ jobs:
             { grep -vE "^${key}=" "$file" || true; } > "$file.tmp"
             printf '%s="%s"\n' "$key" "$value" >> "$file.tmp"
             mv "$file.tmp" "$file"
-            echo "$key: definida (${#value} caracteres)"
+            echo "$key: definida desde $source (${#value} caracteres)"
           done
 
+          # Formato esperado (datos públicos; se muestran para poder diagnosticar).
+          url=$(grep -E '^NEXT_PUBLIC_SUPABASE_URL=' "$file" | cut -d= -f2- | tr -d '"')
+          key=$(grep -E '^NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=' "$file" | cut -d= -f2- | tr -d '"')
+          echo "Supabase URL: $url"
+          echo "Publishable key: ${key:0:15}… (${#key} caracteres)"
+          if ! printf '%s' "$url" | grep -Eq '^https://[a-z0-9]+\.supabase\.co$'; then
+            echo "::error::NEXT_PUBLIC_SUPABASE_URL no tiene la forma https://<ref>.supabase.co (sin / final ni comillas)."
+            exit 1
+          fi
+          if ! printf '%s' "$key" | grep -Eq '^(sb_publishable_|eyJ)'; then
+            echo "::error::NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY no parece una publishable key (sb_publishable_…)."
+            exit 1
+          fi
+          echo "SUPABASE_HOST=${url#https://}" >> "$GITHUB_ENV"
+
       - run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      # Comprueba ANTES de publicar que la URL de Supabase quedó incrustada en el
+      # proxy y en el código del servidor; si no, el despliegue respondería 500.
+      - name: Verificar el build
+        run: |
+          echo "Funciones generadas:"
+          find .vercel/output/functions -maxdepth 3 -name ".vc-config.json" | sed 's|/.vc-config.json||' | head -20
+          matches=$(grep -rlF "$SUPABASE_HOST" .vercel/output/functions | wc -l)
+          echo "Archivos de funciones que contienen $SUPABASE_HOST: $matches"
+          if [ "$matches" -eq 0 ]; then
+            echo "::error::La URL de Supabase no está en el build: el proxy fallaría con 500. No se despliega."
+            exit 1
+          fi
       - id: deploy
         run: |
           url=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
