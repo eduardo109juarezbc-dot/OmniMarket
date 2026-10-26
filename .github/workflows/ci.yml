@@ -151,6 +151,38 @@ jobs:
       - run: npm install --global vercel@65.2.0
       # Descarga las variables de entorno de producción configuradas en Vercel.
       - run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      # Las NEXT_PUBLIC_* se incrustan en el código AL COMPILAR (cliente y proxy).
+      # `vercel pull` no descarga las variables marcadas como "Sensitive" en Vercel:
+      # quedarían vacías y la app respondería 500. Se toman de las variables del
+      # repositorio (no son secretas: la publishable key es pública por diseño) o,
+      # si no existen, de lo descargado; y si siguen vacías, el despliegue se detiene.
+      - name: Variables públicas del build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_SITE_URL: ${{ secrets.PROD_URL }}
+          NEXT_PUBLIC_CURRENCY: ${{ vars.NEXT_PUBLIC_CURRENCY || 'USD' }}
+          NEXT_PUBLIC_LOCALE: ${{ vars.NEXT_PUBLIC_LOCALE || 'es-ES' }}
+          NEXT_PUBLIC_TIME_ZONE: ${{ vars.NEXT_PUBLIC_TIME_ZONE || 'UTC' }}
+        run: |
+          file=.vercel/.env.production.local
+          touch "$file"
+          for key in NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY NEXT_PUBLIC_SITE_URL NEXT_PUBLIC_CURRENCY NEXT_PUBLIC_LOCALE NEXT_PUBLIC_TIME_ZONE; do
+            value="${!key}"
+            if [ -z "$value" ]; then
+              value=$(grep -E "^${key}=" "$file" | head -n1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//')
+            fi
+            if [ -z "$value" ]; then
+              echo "::error::$key está vacía. Créala en GitHub (Settings → Secrets and variables → Actions → Variables) o quítale 'Sensitive' en Vercel."
+              exit 1
+            fi
+            { grep -vE "^${key}=" "$file" || true; } > "$file.tmp"
+            printf '%s="%s"\n' "$key" "$value" >> "$file.tmp"
+            mv "$file.tmp" "$file"
+            echo "$key: definida (${#value} caracteres)"
+          done
+
       - run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
       - id: deploy
         run: |

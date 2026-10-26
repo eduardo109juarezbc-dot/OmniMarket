@@ -38,6 +38,30 @@ function percentile(values: number[], p: number): number {
 async function main() {
   console.log(`Auditando ${base}\n`);
 
+  // --- la app (no solo la API) ------------------------------------------
+  // Las páginas pasan por proxy.ts, que necesita las variables públicas de
+  // Supabase incrustadas en el build; /api/test/* no pasa por el proxy.
+  const login = await timed("/login");
+  check("/login 200", login.res.status === 200, String(login.res.status));
+  check(
+    "/login con botones de Google y GitHub",
+    login.body.includes('data-testid="login-google"') &&
+      login.body.includes('data-testid="login-github"'),
+  );
+  const privateRoute = await timed("/dashboard");
+  check(
+    "/dashboard sin sesión redirige a /login",
+    privateRoute.res.status === 307 &&
+      (privateRoute.res.headers.get("location") ?? "").includes("/login"),
+    `${privateRoute.res.status} ${privateRoute.res.headers.get("location") ?? ""}`,
+  );
+  const privateApi = await timed("/api/orders");
+  check(
+    "/api/orders sin sesión -> 401",
+    privateApi.res.status === 401,
+    String(privateApi.res.status),
+  );
+
   // Con --reset se parte del conjunto semilla: los conteos esperados son exactos.
   if (doReset) {
     const token = process.env.TEST_API_TOKEN ?? "";

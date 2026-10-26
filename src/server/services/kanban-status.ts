@@ -68,7 +68,11 @@ export async function getBoardSummary(db: Db): Promise<BoardSummary> {
     .from(orders)
     .groupBy(orders.status);
 
-  const counts = new Map(rows.map((row) => [row.status, row.count]));
+  // Tipos explícitos: sin ellos, algunas versiones de TypeScript infieren el
+  // Map como Map<…, {}> a partir de la tupla y `count` deja de ser number.
+  const counts = new Map<OrderStatus, number>(
+    rows.map((row): [OrderStatus, number] => [row.status, Number(row.count)]),
+  );
   return {
     columns: ORDER_STATUSES.map((status) => ({
       status,
