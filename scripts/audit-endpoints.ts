@@ -6,6 +6,7 @@
  *   npx tsx scripts/audit-endpoints.ts https://<app>.vercel.app --reset   (usa TEST_API_TOKEN)
  *
  * Sin --reset no modifica datos: solo prueba que reset-data rechaza peticiones sin token.
+ * --latency-info (CI): la puerta del SLA es la duración en el servidor.
  */
 import { config } from "dotenv";
 
@@ -13,6 +14,8 @@ config({ path: [".env.local", ".env"], quiet: true });
 
 const base = (process.argv[2] ?? "http://localhost:3000").replace(/\/$/, "");
 const doReset = process.argv.includes("--reset");
+/** --latency-info: la latencia del cliente se informa y la puerta es la del servidor. */
+const latencyInfo = process.argv.includes("--latency-info");
 let failures = 0;
 
 function check(name: string, ok: boolean, detail = "") {
@@ -84,7 +87,15 @@ async function main() {
     `      10 peticiones en caliente: p50 ${p50.toFixed(0)} ms, p95 ${percentile(samples, 95).toFixed(0)} ms, ` +
       `máx ${Math.max(...samples).toFixed(0)} ms (servidor p50 ${percentile(serverMs, 50).toFixed(0)} ms)`,
   );
-  check("analytics p50 < 300 ms", p50 < 300, `${p50.toFixed(0)} ms`);
+  if (latencyInfo) {
+    // Desde un runner remoto la latencia incluye su red: la puerta del SLA es
+    // la duración medida en el servidor (meta.durationMs / Server-Timing).
+    const serverP50 = percentile(serverMs, 50);
+    check("analytics p50 servidor < 300 ms", serverP50 < 300, `${serverP50.toFixed(0)} ms`);
+    console.log(`      (latencia vista desde aquí: p50 ${p50.toFixed(0)} ms, solo informativa)`);
+  } else {
+    check("analytics p50 < 300 ms", p50 < 300, `${p50.toFixed(0)} ms`);
+  }
 
   const second = JSON.parse((await timed("/api/test/analytics?page=2&limit=50")).body);
   check("analytics página 2 distinta", second.data?.[0]?.code !== firstJson.data?.[0]?.code);

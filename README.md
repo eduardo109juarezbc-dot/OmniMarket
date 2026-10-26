@@ -1,5 +1,7 @@
 # OmniMarket · Operations Hub
 
+[![CI](https://github.com/eduardo109juarezbc-dot/OmniMarket/actions/workflows/ci.yml/badge.svg)](https://github.com/eduardo109juarezbc-dot/OmniMarket/actions/workflows/ci.yml)
+
 Dashboard de analítica y operaciones de e-commerce en tiempo real: KPIs y gráficos de ventas, CRUD de productos y pedidos, tablero Kanban con drag and drop, edición en lote y endpoints de auditoría `/api/test/*`.
 
 ## Stack
@@ -189,6 +191,32 @@ npx supabase stop
 
 Después puedes cerrar Docker Desktop.
 
+### Ejecutar los E2E en local
+
+Los E2E cubren los tres flujos del PDF §5: autenticación, creación y drag and drop. Usan siempre el Supabase local y se niegan a ejecutarse contra una URL que no sea `127.0.0.1` o `localhost`.
+
+1. Con Docker abierto y el Supabase local arrancado (ver abajo), instala el navegador una sola vez:
+
+   ```bash
+   npx playwright install chromium
+   ```
+
+2. Ejecuta la suite:
+
+   ```bash
+   npm run test:e2e
+   ```
+
+   Playwright hace todo lo demás:
+   - aplica las migraciones al Supabase local;
+   - crea el usuario de prueba y guarda su sesión;
+   - compila la app en `.next-e2e` y la sirve en `http://localhost:3100`, así no choca con tu `npm run dev`;
+   - restablece los datos antes de cada test.
+
+   Si aparece cualquier error o aviso en la consola del navegador, el test falla.
+
+   Para ver el informe: `npx playwright show-report`.
+
 ### Supabase local (opcional)
 
 ```bash
@@ -196,6 +224,53 @@ cp supabase/.env.example supabase/.env   # credenciales OAuth ficticias, suficie
 npx supabase start -x "storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor"
 npx supabase status                      # URL, claves y DB_URL del stack local
 ```
+
+## CI/CD y despliegue
+
+`.github/workflows/ci.yml` se ejecuta en cada push y pull request:
+
+| Job            | Qué hace                                                                |
+| -------------- | ----------------------------------------------------------------------- |
+| `quality`      | Prettier, ESLint y tipos                                                |
+| `unit`         | Vitest con cobertura (artifact `coverage`)                              |
+| `e2e`          | Supabase local en el runner y Playwright (artifact `playwright-report`) |
+| `migrate-prod` | `drizzle-kit migrate` contra la base de producción                      |
+| `deploy`       | `vercel build` y `vercel deploy --prebuilt --prod`                      |
+| `smoke`        | Verifica los 3 endpoints de auditoría en la URL de producción           |
+
+Los tres últimos solo corren en push a `main`, si `quality`, `unit` y `e2e` pasan y si la variable `DEPLOY_ENABLED` vale `true`.
+
+`vercel.json` desactiva los despliegues automáticos de Vercel desde Git. Así **la única vía a producción es el pipeline**, y un test en rojo bloquea el despliegue. La región de las funciones (`pdx1`, Oregón) es la misma que la del proyecto de Supabase (`us-west-2`), para cumplir el SLA de 300 ms.
+
+`.github/workflows/keepalive.yml` consulta la API cada 2 días para que el plan gratuito de Supabase no pause el proyecto.
+
+### Configuración (una sola vez)
+
+1. **Vercel:**
+   - importa el repositorio, con framework Next.js y la raíz del repo como directorio raíz;
+   - en _Settings → Environment Variables_ (entorno _Production_), añade: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `DATABASE_URL`, `TEST_API_TOKEN`, `NEXT_PUBLIC_SITE_URL` (la URL pública), `NEXT_PUBLIC_CURRENCY`, `NEXT_PUBLIC_LOCALE` y `NEXT_PUBLIC_TIME_ZONE`;
+   - crea un token en _Account Settings → Tokens_;
+   - los ids están en _Project Settings_ (`Project ID`) y en _Team/Account Settings_ (`Team ID`), o en `.vercel/project.json` tras ejecutar `npx vercel link`.
+2. **GitHub → Settings → Secrets and variables → Actions:**
+
+   | Tipo     | Nombre                     | Valor                                                          |
+   | -------- | -------------------------- | -------------------------------------------------------------- |
+   | Secret   | `VERCEL_TOKEN`             | Token de Vercel                                                |
+   | Secret   | `VERCEL_ORG_ID`            | Team ID (u Org ID) de Vercel                                   |
+   | Secret   | `VERCEL_PROJECT_ID`        | Project ID de Vercel                                           |
+   | Secret   | `PROD_DATABASE_URL_DIRECT` | Cadena del _Session pooler_ (puerto 5432) de producción        |
+   | Secret   | `PROD_URL`                 | URL pública, p. ej. `https://<app>.vercel.app` (sin `/` final) |
+   | Variable | `DEPLOY_ENABLED`           | `true` cuando lo anterior esté listo                           |
+
+3. **Protección de rama:** en _Settings → Branches_, marca `quality`, `unit` y `e2e` como checks obligatorios en `main`.
+4. **Supabase y proveedores OAuth:**
+   - añade `https://<app>.vercel.app/**` a _Redirect URLs_ y cambia _Site URL_ a la URL pública;
+   - en Google, añade el dominio de Vercel como dominio autorizado y publica la app (_Audience → Publish app_), para que cualquier cuenta pueda entrar.
+5. **Datos de prueba en producción:** tras el primer despliegue, ejecuta una vez:
+
+   ```bash
+   curl -X POST -H "x-test-token: <TEST_API_TOKEN>" https://<app>.vercel.app/api/test/reset-data
+   ```
 
 ## Estructura
 
@@ -207,6 +282,7 @@ src/
   lib/                  dominio puro: finanzas, formato, filtros, Kanban, esquemas Zod, auth
   server/               solo servidor: db (Drizzle), services, auth, http, route
   proxy.ts              sesión y protección de rutas (el antiguo middleware.ts)
+e2e/                    Playwright: auth, creación y drag and drop
 drizzle/                migraciones SQL
 supabase/config.toml    stack local para E2E
 scripts/                semilla, verificación de entorno y auditoría de endpoints

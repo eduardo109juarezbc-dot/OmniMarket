@@ -1,0 +1,29 @@
+# Mantiene activo el proyecto gratuito de Supabase (se pausa tras ~7 días sin
+# actividad) y la función de Vercel. Consulta la base a través del endpoint
+# público de auditoría, sin modificar datos.
+name: Keepalive
+
+on:
+  schedule:
+    - cron: "17 12 */2 * *" # cada 2 días a las 12:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Consultar /api/test/analytics
+        env:
+          PROD_URL: ${{ secrets.PROD_URL }}
+        run: |
+          if [ -z "$PROD_URL" ]; then
+            echo "El secreto PROD_URL no está configurado; nada que hacer."
+            exit 0
+          fi
+          curl --fail --silent --show-error --max-time 30 \
+            -o /dev/null -w "HTTP %{http_code} en %{time_total}s\n" \
+            "$PROD_URL/api/test/analytics?page=1&limit=1"

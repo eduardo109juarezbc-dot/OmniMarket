@@ -1,0 +1,171 @@
+# Pipeline de CI/CD (PDF §5): bloquea el despliegue en Vercel si falla cualquier prueba.
+#
+#   quality ─┐
+#            ├─► e2e ─► migrate-prod ─► deploy ─► smoke
+#   unit ────┘
+#
+# Los 3 últimos solo corren en push a main y con la variable DEPLOY_ENABLED=true.
+#
+# vercel.json desactiva los despliegues automáticos desde Git: la única vía a
+# producción es el job `deploy`, que depende de que pasen todas las pruebas.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  quality:
+    name: Lint, formato y tipos
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+
+  unit:
+    name: Pruebas unitarias e integración (Vitest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run test:coverage
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 14
+
+  e2e:
+    name: Flujos E2E (Playwright + Supabase local)
+    needs: [quality, unit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Solo para el Supabase local del runner; no es un secreto de producción.
+      E2E_TEST_API_TOKEN: ci-e2e-token-0123456789
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+
+      - name: Arrancar Supabase local
+        run: |
+          cp supabase/.env.example supabase/.env
+          npx supabase start -x "storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor"
+
+      - name: Instalar Chromium
+        run: npx playwright install --with-deps chromium
+
+      # Aplica migraciones, crea el usuario de prueba, compila y sirve la app.
+      - run: npm run test:e2e
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+
+      - name: Parar Supabase local
+        if: always()
+        run: npx supabase stop --no-backup
+
+  migrate-prod:
+    name: Migraciones de producción
+    needs: e2e
+    # DEPLOY_ENABLED (variable del repositorio) se activa cuando los secretos de
+    # Vercel y Supabase ya están configurados; hasta entonces solo corren las pruebas.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: drizzle-kit migrate
+        run: npx drizzle-kit migrate
+        env:
+          DATABASE_URL_DIRECT: ${{ secrets.PROD_DATABASE_URL_DIRECT }}
+
+  deploy:
+    name: Despliegue en Vercel
+    needs: migrate-prod
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm install --global vercel@65.2.0
+      # Descarga las variables de entorno de producción configuradas en Vercel.
+      - run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+      - run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+      - id: deploy
+        run: |
+          url=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Desplegado en $url"
+
+  smoke:
+    name: Verificación de humo en producción
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # Sin --reset: no modifica datos; comprueba los 3 endpoints de auditoría y
+      # que reset-data rechaza peticiones sin token. La latencia desde el runner
+      # incluye la red de GitHub, por eso es informativa (--latency-info).
+      - run: npx tsx scripts/audit-endpoints.ts "${{ secrets.PROD_URL }}" --latency-info

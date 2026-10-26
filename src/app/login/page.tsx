@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
 import { OAuthButtons } from "@/components/auth/oauth-buttons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,11 +23,23 @@ export default function LoginPage({ searchParams }: PageProps<"/login">) {
           </CardTitle>
           <CardDescription>Inicia sesión con tu cuenta de Google o de GitHub.</CardDescription>
         </CardHeader>
+        {/* Enlaces legales: Google los exige para publicar la app OAuth. */}
         <CardContent className="pb-8">
           {/* searchParams es un dato de la petición: se resuelve dentro de Suspense. */}
           <Suspense fallback={<LoginOptionsSkeleton />}>
             <LoginOptions searchParams={searchParams} />
           </Suspense>
+          <p className="mt-6 text-center text-xs text-muted">
+            Al continuar aceptas los{" "}
+            <Link href="/terminos" className="underline hover:text-ink">
+              términos de uso
+            </Link>{" "}
+            y la{" "}
+            <Link href="/privacidad" className="underline hover:text-ink">
+              política de privacidad
+            </Link>
+            .
+          </p>
         </CardContent>
       </Card>
     </main>
