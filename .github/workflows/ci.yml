@@ -206,22 +206,28 @@ jobs:
       - run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
 
       # Comprueba ANTES de publicar que la URL de Supabase quedó incrustada en el
-      # proxy y en el código del servidor; si no, el despliegue respondería 500.
+      # código compilado; si no, el proxy respondería 500 en todas las páginas.
+      # -R sigue enlaces simbólicos: las funciones de .vercel/output apuntan a
+      # los archivos compilados de .next en lugar de copiarlos.
       - name: Verificar el build
         run: |
-          echo "Funciones generadas:"
-          find .vercel/output/functions -maxdepth 3 -name ".vc-config.json" | sed 's|/.vc-config.json||' | head -20
-          matches=$(grep -rlF "$SUPABASE_HOST" .vercel/output/functions | wc -l)
-          echo "Archivos de funciones que contienen $SUPABASE_HOST: $matches"
+          matches=$(grep -RlF --include='*.js' "$SUPABASE_HOST" .next/server .vercel/output 2>/dev/null | wc -l)
+          echo "Archivos compilados que contienen $SUPABASE_HOST: $matches"
           if [ "$matches" -eq 0 ]; then
             echo "::error::La URL de Supabase no está en el build: el proxy fallaría con 500. No se despliega."
             exit 1
           fi
+
+      # Sube el build. --prod lo marca como producción; `vercel promote` además
+      # mueve el dominio público aunque antes se hubiera hecho un rollback manual
+      # en Vercel (tras un rollback, Vercel deja de asignarlo automáticamente).
       - id: deploy
         run: |
           url=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "Desplegado en $url"
+          vercel promote "$url" --yes --timeout=5m --token=${{ secrets.VERCEL_TOKEN }}
+          echo "Dominio de producción apuntando a $url"
 
   smoke:
     name: Verificación de humo en producción
