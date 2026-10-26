@@ -218,16 +218,14 @@ jobs:
             exit 1
           fi
 
-      # Sube el build. --prod lo marca como producción; `vercel promote` además
-      # mueve el dominio público aunque antes se hubiera hecho un rollback manual
-      # en Vercel (tras un rollback, Vercel deja de asignarlo automáticamente).
+      # Sube el build y, con --prod, asigna el dominio de producción (en el log:
+      # "Aliased"). Si alguna vez se hace un rollback manual en Vercel, hay que
+      # deshacerlo en el panel para que vuelva a asignarse automáticamente.
       - id: deploy
         run: |
           url=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "Desplegado en $url"
-          vercel promote "$url" --yes --timeout=5m --token=${{ secrets.VERCEL_TOKEN }}
-          echo "Dominio de producción apuntando a $url"
 
   smoke:
     name: Verificación de humo en producción
