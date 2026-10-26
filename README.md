@@ -262,10 +262,9 @@ Los tres últimos solo corren en `main`, con un push o con _Run workflow_. Adem�
    | Secret   | `PROD_URL`                             | URL pública, p. ej. `https://<app>.vercel.app` (sin `/` final) |
    | Secret   | `NEXT_PUBLIC_SUPABASE_URL`             | URL del proyecto de Supabase (se incrusta en el build)         |
    | Secret   | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Publishable key de Supabase (se incrusta en el build)          |
-   | Secret   | `PROD_TEST_API_TOKEN`                  | El mismo valor que `TEST_API_TOKEN` en Vercel                  |
    | Variable | `DEPLOY_ENABLED`                       | `true` cuando lo anterior esté listo                           |
 
-   El pipeline compila en GitHub y sube el resultado con `vercel deploy --prebuilt`. `vercel pull` no entrega el valor real de las variables marcadas como _Sensitive_ en Vercel. Por eso las que necesita el build se leen de GitHub, y el despliegue se detiene si faltan o tienen un formato incorrecto.
+   El pipeline compila en GitHub y sube el resultado con `vercel deploy --prebuilt`. `vercel pull` no entrega el valor real de las variables marcadas como _Sensitive_ en Vercel. Por eso las que necesita el build se leen de GitHub, y el despliegue se detiene si faltan o tienen un formato incorrecto. Las variables de servidor (`DATABASE_URL`, `TEST_API_TOKEN`) las inyecta Vercel en tiempo de ejecución: se configuran solo en Vercel, y un cambio de valor se aplica en el siguiente despliegue.
 
 3. **Protección de rama:** en _Settings → Branches_, marca `quality`, `unit` y `e2e` como checks obligatorios en `main`.
 4. **Supabase y proveedores OAuth:**

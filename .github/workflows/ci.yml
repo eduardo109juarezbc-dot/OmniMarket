@@ -166,7 +166,6 @@ jobs:
           NEXT_PUBLIC_CURRENCY: ${{ vars.NEXT_PUBLIC_CURRENCY || 'USD' }}
           NEXT_PUBLIC_LOCALE: ${{ vars.NEXT_PUBLIC_LOCALE || 'es-ES' }}
           NEXT_PUBLIC_TIME_ZONE: ${{ vars.NEXT_PUBLIC_TIME_ZONE || 'UTC' }}
-          PROD_TEST_API_TOKEN: ${{ secrets.PROD_TEST_API_TOKEN }}
         run: |
           file=.vercel/.env.production.local
           touch "$file"
@@ -203,18 +202,6 @@ jobs:
             exit 1
           fi
           echo "SUPABASE_HOST=${url#https://}" >> "$GITHUB_ENV"
-
-          # Variables de servidor marcadas como "Sensitive" en Vercel: `vercel pull`
-          # no trae su valor real y el build prebuilt se publicaría con uno inválido.
-          # Si existe el secreto correspondiente en GitHub, se usa ese valor.
-          if [ -n "$PROD_TEST_API_TOKEN" ]; then
-            { grep -vE "^TEST_API_TOKEN=" "$file" || true; } > "$file.tmp"
-            printf 'TEST_API_TOKEN="%s"\n' "$(printf '%s' "$PROD_TEST_API_TOKEN" | tr -d '\r\n')" >> "$file.tmp"
-            mv "$file.tmp" "$file"
-            echo "TEST_API_TOKEN: definida desde GitHub"
-          else
-            echo "::warning::Falta el secreto PROD_TEST_API_TOKEN: reset-data usará el valor que entregue vercel pull."
-          fi
 
       - run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
 
